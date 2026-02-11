@@ -6,14 +6,14 @@ from modes.Text.text import text
 from modes.Video.video import video
 
 
-UPLOAD_IMAGE_FOLDER = 'modes\\Image\\static'
-IMAGE_CACHE_FOLDER = 'modes\\Image\\__pycache__'
-UPLOAD_TEXT_FOLDER = 'modes\\Text\\static'
-TEXT_CACHE_FOLDER = 'modes\\Text\\__pycache__'
-UPLOAD_AUDIO_FOLDER = 'modes\\Audio\\static'
-AUDIO_CACHE_FOLDER = 'modes\\Audio\\__pycache__'
-UPLOAD_VIDEO_FOLDER = 'modes\\Video\\static'
-VIDEO_CACHE_FOLDER = 'modes\\Video\\__pycache__'
+UPLOAD_IMAGE_FOLDER = 'modes/Image/static'
+IMAGE_CACHE_FOLDER = 'modes/Image/__pycache__'
+UPLOAD_TEXT_FOLDER = 'modes/Text/static'
+TEXT_CACHE_FOLDER = 'modes/Text/__pycache__'
+UPLOAD_AUDIO_FOLDER = 'modes/Audio/static'
+AUDIO_CACHE_FOLDER = 'modes/Audio/__pycache__'
+UPLOAD_VIDEO_FOLDER = 'modes/Video/static'
+VIDEO_CACHE_FOLDER = 'modes/Video/__pycache__'
 
 app = Flask(__name__)
 app.secret_key = "hello"

@@ -6,7 +6,9 @@ import os
 import math
 import shutil
 from subprocess import run, CalledProcessError
-import shutil as _shutil
+import uuid
+import traceback
+import sys
 
 video = Blueprint("video", __name__, static_folder="static",
                   template_folder="templates")
@@ -39,7 +41,9 @@ def video_encode_result():
         try:
             encrypt(save_path, message)
             encryption = True
-        except:
+        except Exception as e:
+            print(f"Encryption error: {e}")
+            traceback.print_exc()
             encryption = False
 
         return render_template("encode-video-result.html",
@@ -75,7 +79,9 @@ def video_decode_result():
         try:
             decrypted_text = decrypt(save_path)
             decryption = True
-        except:
+        except Exception as e:
+            print(f"Decryption error: {e}")
+            traceback.print_exc()
             decrypted_text = ""
             decryption = False
 
@@ -87,31 +93,52 @@ def video_decode_result():
     return redirect(url_for("video.video_decode"))
 
 
+def get_ffmpeg_path():
+    # Check system path first
+    ffmpeg_path = shutil.which("ffmpeg")
+    if ffmpeg_path:
+        return ffmpeg_path
+    
+    # Check bundled path (mainly for Windows)
+    bundled_path = os.path.abspath(os.path.join(
+        os.path.dirname(__file__), 
+        "ffmpeg-4.3.1-2020-10-01-full_build", "bin", "ffmpeg.exe"
+    ))
+    if os.path.exists(bundled_path):
+        return bundled_path
+        
+    return None
+
+
 def encrypt(f_name, input_string):
-    frame_extraction(f_name)
-    encode_string(input_string)
+    temp_dir = frame_extraction(f_name)
+    try:
+        encode_string(input_string, root=temp_dir)
 
-    ffmpeg_path = _shutil.which("ffmpeg")
-    if not ffmpeg_path:
-        raise FileNotFoundError("ffmpeg not found")
+        ffmpeg_path = get_ffmpeg_path()
+        if not ffmpeg_path:
+            raise FileNotFoundError("ffmpeg not found. Please install ffmpeg or ensure it is in the project structure.")
 
-    os.makedirs("modes/Video/static", exist_ok=True)
-    out_file = "modes/Video/static/enc-video.mp4"
+        os.makedirs("modes/Video/static", exist_ok=True)
+        out_file = "modes/Video/static/enc-video.mp4"
 
-    cmd = [
-        ffmpeg_path, "-y",
-        "-framerate", "24",
-        "-i", "tmp/%d.png",
-        "-vcodec", "libx264",
-        "-pix_fmt", "yuv420p",
-        out_file
-    ]
+        cmd = [
+            ffmpeg_path, "-y",
+            "-framerate", "24",
+            "-i", os.path.join(temp_dir, "%d.png"),
+            "-vcodec", "libx264",
+            "-pix_fmt", "yuv420p",
+            out_file
+        ]
 
-    run(cmd, check=True)
-    clean_tmp()
+        run(cmd, check=True)
+    finally:
+        clean_tmp(temp_dir)
 
 
 def split_string(s_str, count=10):
+    if not s_str:
+        return []
     per_c = math.ceil(len(s_str) / count)
     out_str = ''
     split_list = []
@@ -129,22 +156,27 @@ def split_string(s_str, count=10):
 
 
 def frame_extraction(video):
-    if os.path.exists("./tmp"):
-        shutil.rmtree("./tmp")
-
-    os.makedirs("tmp", exist_ok=True)
+    temp_dir = os.path.join("tmp", str(uuid.uuid4()))
+    os.makedirs(temp_dir, exist_ok=True)
 
     vidcap = cv2.VideoCapture(video)
+    if not vidcap.isOpened():
+        shutil.rmtree(temp_dir)
+        raise IOError(f"Cannot open video file {video}")
+
     count = 0
     while True:
         success, image = vidcap.read()
         if not success:
             break
-        cv2.imwrite(f"tmp/{count}.png", image)
+        cv2.imwrite(os.path.join(temp_dir, f"{count}.png"), image)
         count += 1
+    
+    vidcap.release()
+    return temp_dir
 
 
-def encode_string(input_string, root="./tmp/"):
+def encode_string(input_string, root):
     split_list = split_string(input_string)
 
     frame_files = sorted(
@@ -163,28 +195,28 @@ def encode_string(input_string, root="./tmp/"):
 
 
 def decrypt(video):
-    frame_extraction(video)
-    root = "./tmp/"
+    temp_dir = frame_extraction(video)
+    try:
+        files = sorted(
+            [f for f in os.listdir(temp_dir) if f.endswith(".png")],
+            key=lambda x: int(x.split(".")[0])
+        )
 
-    files = sorted(
-        [f for f in os.listdir(root) if f.endswith(".png")],
-        key=lambda x: int(x.split(".")[0])
-    )
-
-    secret = []
-    for f in files:
-        f_name = os.path.join(root, f)
-        try:
-            revealed = lsb.reveal(f_name)
-            if revealed:
-                secret.append(revealed)
-        except:
-            pass
-
-    clean_tmp()
-    return ''.join(secret)
+        secret = []
+        for f in files:
+            f_name = os.path.join(temp_dir, f)
+            try:
+                revealed = lsb.reveal(f_name)
+                if revealed:
+                    secret.append(revealed)
+            except:
+                pass
+        
+        return ''.join(secret)
+    finally:
+        clean_tmp(temp_dir)
 
 
-def clean_tmp(path="./tmp"):
+def clean_tmp(path):
     if os.path.exists(path):
         shutil.rmtree(path)
